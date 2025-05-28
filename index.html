@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Project URL Organizer | Shroomtop420™</title>
+  <meta name="description" content="Self-contained project URL organizer for CodePen, GitHub Pages, and ChatGPT Store GPTs. Supports local IndexedDB, import/export, Excel/CSV, mobile-first, dark mode."/>
+  <link rel="icon" href="https://www.shroomtop420.com/favicon.ico"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', 'Montserrat', 'Segoe UI', sans-serif; }
+    ::selection { background: #7c3aed66; }
+    .glass {
+      background: rgba(30,30,40,0.75);
+      box-shadow: 0 8px 32px 0 rgba(31,38,135,0.16);
+      border-radius: 1.5rem;
+      border: 1px solid rgba(120, 64, 220, 0.13);
+      backdrop-filter: blur(10px);
+    }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #29292e; border-radius: 8px; }
+    @media (max-width:640px) {
+      .table-responsive { overflow-x:auto; }
+    }
+    input[type="file"] { color-scheme: dark; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-tr from-[#18132b] via-[#1a102b] to-[#220a38] text-gray-100 p-0">
+  <header class="flex flex-col items-center gap-1 pt-7 pb-4 select-none">
+    <div class="text-3xl font-bold text-violet-300 tracking-tight flex items-center gap-2">
+      <svg width="30" height="30" fill="none" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" stroke="#7c3aed" stroke-width="3" fill="#18132b"/><text x="8" y="20" font-size="13" fill="#7c3aed" font-family="monospace">URL</text></svg>
+      Project URL Organizer
+    </div>
+    <p class="text-xs text-gray-400">Collect, edit, and export CodePen, GitHub Pages, and ChatGPT GPTs</p>
+  </header>
+
+  <main class="flex flex-col items-center px-2 pb-8">
+    <!-- Form -->
+    <form id="urlForm" class="glass w-full max-w-xl px-6 py-4 mb-6 space-y-3">
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input required type="text" id="projectName" placeholder="Project Name/Title"
+          class="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 ring-violet-400 transition"/>
+        <select id="projectType" required
+          class="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 ring-violet-400">
+          <option value="" disabled selected>Type</option>
+          <option value="CodePen">CodePen</option>
+          <option value="GitHub Pages">GitHub Pages</option>
+          <option value="ChatGPT Store">ChatGPT Store</option>
+        </select>
+      </div>
+      <input required type="url" id="projectURL" placeholder="Project URL (https://...)"
+        class="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 ring-violet-400"/>
+      <input type="text" id="projectNotes" placeholder="Notes (optional)"
+        class="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 ring-violet-400"/>
+      <div class="flex justify-end">
+        <button type="submit"
+          class="bg-violet-600 hover:bg-violet-500 px-4 py-2 rounded-lg text-sm font-semibold shadow-md transition">Add / Update</button>
+      </div>
+    </form>
+
+    <!-- Controls -->
+    <div class="glass w-full max-w-xl px-4 py-3 mb-4 flex flex-wrap items-center gap-2 justify-between">
+      <input type="search" id="searchBox"
+        class="bg-gray-800 px-3 py-2 rounded-lg text-sm w-40 focus:ring-2 ring-violet-400 outline-none"
+        placeholder="Search..."/>
+      <div class="flex gap-2 flex-wrap">
+        <button id="exportXLSX"
+          class="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-xs font-medium shadow transition">Export Excel</button>
+        <button id="exportCSV"
+          class="bg-amber-700 hover:bg-amber-600 px-3 py-1.5 rounded-lg text-xs font-medium shadow transition">Export CSV</button>
+        <label class="relative bg-sky-700 hover:bg-sky-600 px-3 py-1.5 rounded-lg text-xs font-medium shadow transition cursor-pointer">
+          <input type="file" id="importFile" accept=".json,.csv,.xlsx" class="absolute inset-0 opacity-0 cursor-pointer"/>
+          Import
+        </label>
+        <button id="exportJSON"
+          class="bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded-lg text-xs font-medium shadow transition">Export Backup</button>
+        <button id="deleteAll"
+          class="bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-medium shadow transition">Delete All</button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="glass w-full max-w-5xl table-responsive overflow-x-auto shadow">
+      <table class="min-w-full text-sm rounded-xl">
+        <thead>
+          <tr class="bg-gray-900 text-violet-300 text-left">
+            <th class="py-2 px-3 cursor-pointer sort" data-sort="projectName">Name <span>↕</span></th>
+            <th class="py-2 px-3 cursor-pointer sort" data-sort="projectType">Type <span>↕</span></th>
+            <th class="py-2 px-3 cursor-pointer sort" data-sort="projectURL">URL <span>↕</span></th>
+            <th class="py-2 px-3">Notes</th>
+            <th class="py-2 px-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="urlTableBody" class="bg-gray-800">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Modal for Edit/Delete -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-70 z-30 hidden flex items-center justify-center">
+    <div class="glass w-full max-w-sm p-6 space-y-4">
+      <div id="modalContent"></div>
+      <div class="flex justify-end gap-2">
+        <button id="modalCancel" class="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded font-semibold">Cancel</button>
+        <button id="modalAction" class="bg-violet-600 hover:bg-violet-500 px-4 py-1.5 rounded font-semibold"></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- IndexedDB Setup ---
+    const dbName = 'shroomtop420-project-urls';
+    const storeName = 'urls';
+    let db;
+    let sortField = 'projectName', sortAsc = true, lastSearch = '';
+    let editingId = null;
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName, 1);
+        req.onerror = () => reject('Could not open IndexedDB');
+        req.onsuccess = () => { db = req.result; resolve(); };
+        req.onupgradeneeded = e => {
+          db = e.target.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+          }
+        };
+      });
+    }
+    function getStore(mode='readonly') {
+      return db.transaction(storeName, mode).objectStore(storeName);
+    }
+
+    async function addEntry(entry) {
+      return new Promise((res,rej) => {
+        const s = getStore('readwrite'), r = s.add(entry);
+        r.onsuccess = () => res();
+        r.onerror = () => rej();
+      });
+    }
+    async function updateEntry(id, entry) {
+      entry.id = id;
+      return new Promise((res,rej) => {
+        const s = getStore('readwrite'), r = s.put(entry);
+        r.onsuccess = () => res();
+        r.onerror = () => rej();
+      });
+    }
+    async function deleteEntry(id) {
+      return new Promise((res,rej) => {
+        const s = getStore('readwrite'), r = s.delete(id);
+        r.onsuccess = () => res();
+        r.onerror = () => rej();
+      });
+    }
+    async function getAllEntries() {
+      return new Promise((res,rej) => {
+        const s = getStore('readonly');
+        const req = s.getAll();
+        req.onsuccess = () => res(req.result || []);
+        req.onerror = () => rej();
+      });
+    }
+    async function clearAll() {
+      return new Promise((res,rej) => {
+        const s = getStore('readwrite'), r = s.clear();
+        r.onsuccess = () => res();
+        r.onerror = () => rej();
+      });
+    }
+
+    // --- UI + Logic ---
+    function showModal(html, actionText, cb) {
+      const modal = document.getElementById('modal');
+      document.getElementById('modalContent').innerHTML = html;
+      const btn = document.getElementById('modalAction');
+      btn.textContent = actionText;
+      btn.onclick = () => { cb(); modal.classList.add('hidden'); };
+      document.getElementById('modalCancel').onclick = () => modal.classList.add('hidden');
+      modal.classList.remove('hidden');
+    }
+
+    async function refreshTable() {
+      let entries = await getAllEntries();
+      // Search/filter
+      if (lastSearch.length > 0)
+        entries = entries.filter(e =>
+          (e.projectName || '').toLowerCase().includes(lastSearch) ||
+          (e.projectType || '').toLowerCase().includes(lastSearch) ||
+          (e.projectURL || '').toLowerCase().includes(lastSearch) ||
+          (e.projectNotes || '').toLowerCase().includes(lastSearch)
+        );
+      // Sort
+      entries.sort((a, b) => {
+        let v1 = (a[sortField] || '').toLowerCase(), v2 = (b[sortField] || '').toLowerCase();
+        if (v1 === v2) return 0;
+        return (v1 < v2 ? -1 : 1) * (sortAsc ? 1 : -1);
+      });
+      // Duplicate URL check
+      const urlCounts = {};
+      entries.forEach(e => { urlCounts[e.projectURL] = (urlCounts[e.projectURL]||0)+1; });
+
+      let rows = entries.map(e => `
+        <tr class="border-b border-gray-700 hover:bg-gray-900 transition group">
+          <td class="px-3 py-2 font-medium">${e.projectName || ''}</td>
+          <td class="px-3 py-2">${e.projectType || ''}</td>
+          <td class="px-3 py-2 break-all">
+            <a href="${e.projectURL}" target="_blank"
+              class="underline text-violet-400 hover:text-violet-300 ${urlCounts[e.projectURL]>1 ? 'bg-rose-700/40 px-1 rounded' : ''}">
+              ${e.projectURL}
+            </a>
+          </td>
+          <td class="px-3 py-2">${e.projectNotes ? e.projectNotes.replace(/</g,'&lt;') : ''}</td>
+          <td class="px-3 py-2 flex gap-1">
+            <button title="Edit" class="editEntry text-sky-400 hover:text-sky-200 underline text-xs" data-id="${e.id}">Edit</button>
+            <button title="Delete" class="deleteEntry text-red-400 hover:text-red-200 underline text-xs" data-id="${e.id}">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+      if(!rows) rows = `<tr><td colspan="5" class="text-center text-gray-500 py-7">No entries yet.</td></tr>`;
+      document.getElementById('urlTableBody').innerHTML = rows;
+
+      // Edit/Delete actions
+      document.querySelectorAll('.editEntry').forEach(btn => btn.onclick = async e => {
+        const id = Number(btn.dataset.id);
+        const all = await getAllEntries();
+        const entry = all.find(i => i.id===id);
+        if (!entry) return;
+        // Populate form for editing
+        document.getElementById('projectName').value = entry.projectName;
+        document.getElementById('projectType').value = entry.projectType;
+        document.getElementById('projectURL').value = entry.projectURL;
+        document.getElementById('projectNotes').value = entry.projectNotes || '';
+        editingId = id;
+        window.scrollTo({top:0,behavior:"smooth"});
+      });
+      document.querySelectorAll('.deleteEntry').forEach(btn => btn.onclick = () => {
+        showModal(
+          `<div class="text-base">Delete this entry?<br><span class="text-xs text-gray-400">${btn.parentNode.parentNode.children[0].textContent}</span></div>`,
+          'Delete',
+          async () => { await deleteEntry(Number(btn.dataset.id)); refreshTable(); }
+        );
+      });
+    }
+
+    // --- Import/Export ---
+    async function exportAsExcel(entries) {
+      // Simple XLSX XML; no dependencies
+      let xml = `
+        <?xml version="1.0"?>
+        <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+                  xmlns:o="urn:schemas-microsoft-com:office:office"
+                  xmlns:x="urn:schemas-microsoft-com:office:excel"
+                  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+          <Worksheet ss:Name="URLs"><Table>
+            <Row>
+              <Cell><Data ss:Type="String">Name</Data></Cell>
+              <Cell><Data ss:Type="String">Type</Data></Cell>
+              <Cell><Data ss:Type="String">URL</Data></Cell>
+              <Cell><Data ss:Type="String">Notes</Data></Cell>
+            </Row>
+            ${entries.map(e=>`
+              <Row>
+                <Cell><Data ss:Type="String">${escapeXML(e.projectName||'')}</Data></Cell>
+                <Cell><Data ss:Type="String">${escapeXML(e.projectType||'')}</Data></Cell>
+                <Cell><Data ss:Type="String">${escapeXML(e.projectURL||'')}</Data></Cell>
+                <Cell><Data ss:Type="String">${escapeXML(e.projectNotes||'')}</Data></Cell>
+              </Row>`).join('')}
+          </Table></Worksheet>
+        </Workbook>
+      `.trim();
+      const blob = new Blob([xml], {type:"application/vnd.ms-excel"});
+      triggerDownload(blob, 'Project-URLs.xlsx');
+    }
+    function escapeXML(str) {
+      return (str||'').replace(/[<>&'"]/g, c =>
+        c=='<'?'&lt;':c=='>'?'&gt;':c=='&'?'&amp;':c=="'"?'&apos;':'&quot;');
+    }
+    function exportAsCSV(entries) {
+      // Google Sheets/Excel compatible
+      let rows = [
+        ['Name','Type','URL','Notes'],
+        ...entries.map(e => [
+          csvQuote(e.projectName||''),
+          csvQuote(e.projectType||''),
+          csvQuote(e.projectURL||''),
+          csvQuote(e.projectNotes||'')
+        ])
+      ];
+      let csv = rows.map(r => r.join(',')).join('\r\n');
+      const blob = new Blob([csv], {type:"text/csv"});
+      triggerDownload(blob, 'Project-URLs.csv');
+    }
+    function csvQuote(s) {
+      return s && /[,"\r\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s || '';
+    }
+    function exportAsJSON(entries) {
+      const blob = new Blob([JSON.stringify(entries, null, 2)], {type:"application/json"});
+      triggerDownload(blob, 'Project-URLs-Backup.json');
+    }
+    function triggerDownload(blob, fname) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},500);
+    }
+    function handleImportFile(file) {
+      const reader = new FileReader();
+      reader.onload = async e => {
+        let content = e.target.result;
+        let entries = [];
+        if (file.name.endsWith('.json')) {
+          try {
+            entries = JSON.parse(content);
+          } catch { return alert('Invalid JSON.'); }
+        } else if (file.name.endsWith('.csv')) {
+          entries = csvToEntries(content);
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xml')) {
+          entries = xmlToEntries(content);
+        } else {
+          return alert('Unsupported file format.');
+        }
+        if (!Array.isArray(entries) || entries.length===0) return alert('No entries found.');
+        let count=0;
+        for (const entry of entries) {
+          if (entry.projectName && entry.projectURL && entry.projectType)
+            await addEntry({
+              projectName: entry.projectName,
+              projectURL: entry.projectURL,
+              projectType: entry.projectType,
+              projectNotes: entry.projectNotes||''
+            }).catch(()=>{});
+          count++;
+        }
+        refreshTable();
+        alert(`Imported ${count} entries.`);
+      };
+      reader.readAsText(file);
+    }
+    function// --- CSV Import ---
+    function csvToEntries(csv) {
+      const lines = csv.split(/\r?\n/).filter(Boolean);
+      if (!lines.length) return [];
+      const [header, ...rows] = lines;
+      const heads = header.split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+      return rows.map(row => {
+        const cols = parseCSVRow(row);
+        let obj = {};
+        heads.forEach((h,i)=>obj[headerKeyToField(h)] = cols[i]||'');
+        return obj;
+      });
+    }
+    function parseCSVRow(row) {
+      let arr = [], inQuotes = false, val = '', i = 0;
+      for (; i < row.length; i++) {
+        let c = row[i];
+        if (c === '"') {
+          if (inQuotes && row[i+1]==='"') { val += '"'; i++; }
+          else inQuotes = !inQuotes;
+        } else if (c === ',' && !inQuotes) {
+          arr.push(val); val = '';
+        } else val += c;
+      }
+      arr.push(val);
+      return arr;
+    }
+    function headerKeyToField(k) {
+      k = k.toLowerCase();
+      if (k.includes('name')) return 'projectName';
+      if (k.includes('type')) return 'projectType';
+      if (k.includes('url')) return 'projectURL';
+      if (k.includes('note')) return 'projectNotes';
+      return k;
+    }
+    // --- XML/XLSX Import (basic, for files from this app) ---
+    function xmlToEntries(xml) {
+      const rows = Array.from(xml.matchAll(/<Row>([\s\S]*?)<\/Row>/g));
+      if (!rows.length) return [];
+      const heads = Array.from(rows[0][1].matchAll(/<Data[^>]*>(.*?)<\/Data>/g)).map(m=>m[1]);
+      return rows.slice(1).map(row => {
+        const cols = Array.from(row[1].matchAll(/<Data[^>]*>(.*?)<\/Data>/g)).map(m=>m[1]);
+        let obj = {};
+        heads.forEach((h,i)=>obj[headerKeyToField(h)] = cols[i]||'');
+        return obj;
+      });
+    }
+
+    // --- Event Bindings and Boot ---
+    document.addEventListener('DOMContentLoaded', async () => {
+      await openDB();
+      refreshTable();
+
+      // Form Submit (Add/Update)
+      document.getElementById('urlForm').onsubmit = async e => {
+        e.preventDefault();
+        const entry = {
+          projectName: document.getElementById('projectName').value.trim(),
+          projectType: document.getElementById('projectType').value,
+          projectURL: document.getElementById('projectURL').value.trim(),
+          projectNotes: document.getElementById('projectNotes').value.trim()
+        };
+        // Validate
+        if (!/^https?:\/\/.+/i.test(entry.projectURL)) {
+          alert('URL must start with http:// or https://');
+          return;
+        }
+        if (editingId) {
+          await updateEntry(editingId, {...entry, id: editingId});
+          editingId = null;
+        } else {
+          await addEntry(entry);
+        }
+        e.target.reset();
+        document.getElementById('projectType').selectedIndex = 0;
+        refreshTable();
+      };
+
+      // Search
+      document.getElementById('searchBox').oninput = e => {
+        lastSearch = e.target.value.trim().toLowerCase();
+        refreshTable();
+      };
+
+      // Sorting
+      document.querySelectorAll('.sort').forEach(th => th.onclick = () => {
+        const field = th.dataset.sort;
+        if (sortField === field) sortAsc = !sortAsc;
+        else { sortField = field; sortAsc = true; }
+        refreshTable();
+      });
+
+      // Export
+      document.getElementById('exportXLSX').onclick = async () => {
+        const entries = await getAllEntries();
+        exportAsExcel(entries);
+      };
+      document.getElementById('exportCSV').onclick = async () => {
+        const entries = await getAllEntries();
+        exportAsCSV(entries);
+      };
+      document.getElementById('exportJSON').onclick = async () => {
+        const entries = await getAllEntries();
+        exportAsJSON(entries);
+      };
+
+      // Import
+      document.getElementById('importFile').onchange = async e => {
+        const file = e.target.files[0];
+        if (file) handleImportFile(file);
+        e.target.value = '';
+      };
+
+      // Delete All
+      document.getElementById('deleteAll').onclick = () => {
+        showModal(
+          `<div class="text-base">Delete <b>ALL</b> entries? <br/><span class="text-xs text-gray-400">This action cannot be undone.</span></div>`,
+          'Delete All',
+          async () => { await clearAll(); refreshTable(); }
+        );
+      };
+    });
+
+    // --- UX: Esc key closes modal ---
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.getElementById('modal').classList.add('hidden');
+    });
+  </script>
+</body>
+</html>
